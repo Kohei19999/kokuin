@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['year']
+
+roboflow:
+  workspace: gras-workspace-k8lro
+  project: 50yen-coin
+  version: 1
+  license: Private
+  url: https://app.roboflow.com/gras-workspace-k8lro/50yen-coin/1
