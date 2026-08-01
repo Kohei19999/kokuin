@@ -60,72 +60,46 @@ def find_coin_center(img, base_filename, preproc_out_dir):
 
 
 # =========================================================================
-# パイプラインA: 【穴の有無判定】カスケード判定（try_012）
+# パイプラインA: 【穴の有無判定】狭域ROI ＋ 絶対閾値 ＆ ブラックハット（try_011）
 # =========================================================================
 def pipeline_A_check_hole_presence(img, coin_cx, coin_cy, coin_radius, base_filename, preproc_out_dir):
     h, w = img.shape
     
-    # コインの中心からROIを切り出す
-    roi_size = int(coin_radius * 1.5)
+    # 【最大のブレイクスルー】
+    # ROIを「コイン半径の50%」という非常に狭い領域（穴の周辺のみ）に絞り込む！
+    # これにより、穴なしコイン（011,012）の周辺の梨地や模様を一切拾わなくなる。
+    roi_size = int(coin_radius * 0.6)
     x1 = max(0, coin_cx - roi_size//2)
     y1 = max(0, coin_cy - roi_size//2)
     x2 = min(w, coin_cx + roi_size//2)
     y2 = min(h, coin_cy + roi_size//2)
     roi = img[y1:y2, x1:x2]
     
-    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A1_roi.jpg"), roi)
+    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A1_roi_narrow.jpg"), roi)
     
-    # ---------------------------------------------------------
-    # ステップ1: 絶対的な暗さ（固定閾値）による一次判定
-    # ---------------------------------------------------------
-    # ほとんどの正常な穴（001〜010）は、この単純な処理で100%確実に検出可能。
-    # 穴なし（011, 012）を絶対に誤検知しない最強のフィルター。
+    # 1. 絶対閾値（暗さ）判定
     _, thresh_abs = cv2.threshold(roi, 60, 255, cv2.THRESH_BINARY_INV)
-    
-    mask_abs = np.zeros_like(thresh_abs)
-    rh, rw = thresh_abs.shape
-    cv2.circle(mask_abs, (rw//2, rh//2), int(coin_radius * 0.4), 255, -1)
-    thresh_abs = cv2.bitwise_and(thresh_abs, mask_abs)
-    
-    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A2_thresh_abs.jpg"), thresh_abs)
-    
     dark_abs = cv2.countNonZero(thresh_abs)
     
-    # 確実な暗さがあれば即座に「穴あり」として終了！
-    if dark_abs > 150:
-        return 1, dark_abs, 0
-        
-    # ---------------------------------------------------------
-    # ステップ2: ブラックハット＋円形度による救済判定
-    # ---------------------------------------------------------
-    # ステップ1で漏れたもの（011, 012の穴なし、または 013, 014の照明が明るすぎる穴）を判別する
-    k_size = int(coin_radius * 0.6)
+    # 2. ブラックハット変換（照明ムラで明るく見える穴を抽出）
+    # カーネルはROIの半分くらい
+    k_size = int(roi_size * 0.5)
     if k_size % 2 == 0: k_size += 1
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
-    
     blackhat = cv2.morphologyEx(roi, cv2.MORPH_BLACKHAT, kernel)
-    _, thresh_bh = cv2.threshold(blackhat, 50, 255, cv2.THRESH_BINARY)
     
-    thresh_bh = cv2.bitwise_and(thresh_bh, mask_abs)
+    _, thresh_bh = cv2.threshold(blackhat, 50, 255, cv2.THRESH_BINARY)
+    dark_bh = cv2.countNonZero(thresh_bh)
+    
+    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A2_thresh_abs.jpg"), thresh_abs)
     cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A3_thresh_bh.jpg"), thresh_bh)
     
-    # 抽出された白い領域が「真円（ドリルの穴）」に近いかチェック
-    # 穴なし（011,012）の梨地テクスチャはザラザラしているだけで丸くないため、ここで完全に弾かれる
-    contours, _ = cv2.findContours(thresh_bh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # どちらか一方で一定以上のピクセル（ROI面積の約10%）を検出したら穴あり
+    threshold_pixels = int((roi_size * roi_size) * 0.10)
     
-    is_hole = 0
-    best_circ = 0.0
+    is_hole = 1 if (dark_abs > threshold_pixels or dark_bh > threshold_pixels) else 0
     
-    for c in contours:
-        area = cv2.contourArea(c)
-        perimeter = cv2.arcLength(c, True)
-        if area > 100 and perimeter > 0:
-            circularity = 4 * math.pi * area / (perimeter * perimeter)
-            if circularity > 0.4:  # 丸い形をしていれば本物の穴！
-                is_hole = 1
-                best_circ = circularity
-                
-    return is_hole, dark_abs, int(best_circ * 100)
+    return is_hole, dark_abs, dark_bh
 
 
 # =========================================================================

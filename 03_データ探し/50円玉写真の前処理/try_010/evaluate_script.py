@@ -60,7 +60,7 @@ def find_coin_center(img, base_filename, preproc_out_dir):
 
 
 # =========================================================================
-# パイプラインA: 【穴の有無判定】カスケード判定（try_012）
+# パイプラインA: 【穴の有無判定】ブラックハット ＋ 円形度フィルタ（try_010）
 # =========================================================================
 def pipeline_A_check_hole_presence(img, coin_cx, coin_cy, coin_radius, base_filename, preproc_out_dir):
     h, w = img.shape
@@ -75,57 +75,48 @@ def pipeline_A_check_hole_presence(img, coin_cx, coin_cy, coin_radius, base_file
     
     cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A1_roi.jpg"), roi)
     
-    # ---------------------------------------------------------
-    # ステップ1: 絶対的な暗さ（固定閾値）による一次判定
-    # ---------------------------------------------------------
-    # ほとんどの正常な穴（001〜010）は、この単純な処理で100%確実に検出可能。
-    # 穴なし（011, 012）を絶対に誤検知しない最強のフィルター。
-    _, thresh_abs = cv2.threshold(roi, 60, 255, cv2.THRESH_BINARY_INV)
-    
-    mask_abs = np.zeros_like(thresh_abs)
-    rh, rw = thresh_abs.shape
-    cv2.circle(mask_abs, (rw//2, rh//2), int(coin_radius * 0.4), 255, -1)
-    thresh_abs = cv2.bitwise_and(thresh_abs, mask_abs)
-    
-    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A2_thresh_abs.jpg"), thresh_abs)
-    
-    dark_abs = cv2.countNonZero(thresh_abs)
-    
-    # 確実な暗さがあれば即座に「穴あり」として終了！
-    if dark_abs > 150:
-        return 1, dark_abs, 0
-        
-    # ---------------------------------------------------------
-    # ステップ2: ブラックハット＋円形度による救済判定
-    # ---------------------------------------------------------
-    # ステップ1で漏れたもの（011, 012の穴なし、または 013, 014の照明が明るすぎる穴）を判別する
+    # ブラックハット変換：照明ムラを無視し、局所的に暗い部分だけを白く浮き出させる
     k_size = int(coin_radius * 0.6)
     if k_size % 2 == 0: k_size += 1
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
     
     blackhat = cv2.morphologyEx(roi, cv2.MORPH_BLACKHAT, kernel)
-    _, thresh_bh = cv2.threshold(blackhat, 50, 255, cv2.THRESH_BINARY)
+    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A2_blackhat.jpg"), blackhat)
     
-    thresh_bh = cv2.bitwise_and(thresh_bh, mask_abs)
-    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A3_thresh_bh.jpg"), thresh_bh)
+    # 二値化
+    _, thresh = cv2.threshold(blackhat, 50, 255, cv2.THRESH_BINARY)
     
-    # 抽出された白い領域が「真円（ドリルの穴）」に近いかチェック
-    # 穴なし（011,012）の梨地テクスチャはザラザラしているだけで丸くないため、ここで完全に弾かれる
-    contours, _ = cv2.findContours(thresh_bh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 中央マスク（ROIの端のノイズを無視）
+    mask = np.zeros_like(thresh)
+    rh, rw = thresh.shape
+    cv2.circle(mask, (rw//2, rh//2), int(coin_radius * 0.4), 255, -1)
+    thresh = cv2.bitwise_and(thresh, mask)
+    
+    cv2_imwrite_jp(os.path.join(preproc_out_dir, f"{base_filename}_A3_thresh.jpg"), thresh)
+    
+    # 【try_010 新規】円形度フィルタの導入
+    # ブラックハットは穴なしコイン（011,012）の梨地（ザラザラ）も拾ってしまう。
+    # そこで、拾った白い領域が「丸い穴の形をしているか」をチェックする。
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     is_hole = 0
     best_circ = 0.0
+    best_area = 0
     
     for c in contours:
         area = cv2.contourArea(c)
         perimeter = cv2.arcLength(c, True)
-        if area > 100 and perimeter > 0:
+        if area > 100 and perimeter > 0:  # 一定以上の大きさ
             circularity = 4 * math.pi * area / (perimeter * perimeter)
-            if circularity > 0.4:  # 丸い形をしていれば本物の穴！
-                is_hole = 1
+            if circularity > best_circ:
                 best_circ = circularity
+                best_area = area
+            
+            # 形状が丸に近い（円形度 > 0.4）なら「本物の穴」と認定！
+            if circularity > 0.4:
+                is_hole = 1
                 
-    return is_hole, dark_abs, int(best_circ * 100)
+    return is_hole, int(best_area), int(best_circ * 100)
 
 
 # =========================================================================
