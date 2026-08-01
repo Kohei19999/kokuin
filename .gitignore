@@ -1,0 +1,16 @@
+# ユーザーのパスワード情報を含むファイルをGitから除外
+id.txt
+
+# Python関連の不要ファイル
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# OS関連
+.DS_Store
+Thumbs.db
