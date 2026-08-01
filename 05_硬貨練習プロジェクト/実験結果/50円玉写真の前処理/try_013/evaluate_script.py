@@ -203,7 +203,7 @@ def get_next_try_folder(base_dir):
         i += 1
 
 if __name__ == "__main__":
-    csv_path = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\03_データ探し\50円玉_正解ラベル.csv"
+    csv_path = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\03_データ探し\50円玉_正解ラベル_v2.csv"
     img_dir = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\03_データ探し\50円玉写真"
     base_out_dir = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\05_硬貨練習プロジェクト\実験結果\50円玉写真の前処理"
     
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     current_script_path = os.path.abspath(__file__)
     shutil.copy(current_script_path, os.path.join(trial_dir, "evaluate_script.py"))
     
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, encoding='utf-8-sig')
     results = []
     
     for idx, row in df.iterrows():
