@@ -205,7 +205,7 @@ def get_next_try_folder(base_dir):
 if __name__ == "__main__":
     csv_path = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\03_データ探し\50円玉_正解ラベル.csv"
     img_dir = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\03_データ探し\50円玉写真"
-    base_out_dir = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\03_データ探し\50円玉写真の前処理"
+    base_out_dir = r"c:\__0_kohei_desktop\01_機械設計\03_刻印読む\05_硬貨練習プロジェクト\実験結果\50円玉写真の前処理"
     
     os.makedirs(base_out_dir, exist_ok=True)
     trial_dir = get_next_try_folder(base_out_dir)
